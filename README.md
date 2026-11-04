@@ -2,10 +2,11 @@
 
 Локальный GitOps-стенд: **Kind** + **Argo CD** (App of Apps) + **SOPS**.
 
-В кластере поднимаются два приложения:
+Корневое Application `root-app` подхватывает каталог `apps/` и создаёт дочерние приложения:
 
 - `podinfo` — учебный HTTP-сервис
-- `monitoring` — Grafana
+- `monitoring-crds` — CRD Prometheus Operator
+- `monitoring` — kube-prometheus-stack (Prometheus + Grafana)
 
 Секреты в Git хранятся только в зашифрованном виде (`secrets/demo-secret.enc.yaml`).
 
@@ -21,6 +22,7 @@
 │   ├── podinfo/
 │   │   └── application.yaml
 │   └── monitoring/
+│       ├── crds-application.yaml
 │       └── application.yaml
 ├── secrets/
 │   ├── demo-secret.yaml          # plaintext, only for local generation
@@ -41,7 +43,7 @@ kind create cluster --name arvelov-gitops-demo --config kind-config.yaml
 kubectl cluster-info --context kind-arvelov-gitops-demo
 ```
 
-Порт `8080` на хосте проброшен на NodePort `30080` в кластере.
+В `kind-config.yaml` проброшен один порт: хост `8080` → NodePort `30080`. На нём слушает `podinfo`.
 
 ## 2. Argo CD
 
@@ -57,15 +59,13 @@ kubectl -n argocd rollout status deploy/argocd-server
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 ```
 
-UI через NodePort (после патча сервиса) или port-forward:
+UI только через port-forward. Порт `8080` на хосте уже занят `podinfo`:
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:443
+kubectl -n argocd port-forward svc/argocd-server 8443:443
 ```
 
-Открыть https://localhost:8080 (логин `admin`).
-
-Чтобы ходить на UI по `http://localhost:8080` без port-forward, переведите `argocd-server` в NodePort `30080`.
+Открыть https://localhost:8443 (логин `admin`). В списке Applications будет `root-app` и дочерние приложения.
 
 ## 3. SOPS
 
@@ -91,7 +91,7 @@ sops -e secrets/demo-secret.yaml > secrets/demo-secret.enc.yaml
 sops -d secrets/demo-secret.enc.yaml
 ```
 
-Расшифрованный секрет в кластер (пока без плагина в Argo CD):
+Расшифрованный секрет в кластер (Argo CD сам SOPS не расшифровывает):
 
 ```bash
 sops -d secrets/demo-secret.enc.yaml | kubectl apply -f -
@@ -100,25 +100,46 @@ sops -d secrets/demo-secret.enc.yaml | kubectl apply -f -
 ## 4. App of Apps
 
 1. Запушьте репозиторий.
-2. В `argocd/root-app.yaml` и в `apps/*/application.yaml` укажите свой `repoURL`.
-3. Зарегистрируйте репозиторий в Argo CD (UI → Settings → Repositories или `argocd repo add`).
+2. В `argocd/root-app.yaml` укажите свой `repoURL`, если он отличается.
+3. Зарегистрируйте репозиторий в Argo CD (UI → Settings → Repositories или `argocd repo add`). Helm-репозитории podinfo и Prometheus отдельно регистрировать не нужно: URL чартов уже в Application.
 4. Примените корневое приложение:
 
 ```bash
 kubectl apply -f argocd/root-app.yaml
 ```
 
-Корневое Application создаст `podinfo` и `monitoring`. При `automated.syncPolicy` они сами синхронизируются.
+`root-app` создаст `podinfo`, `monitoring-crds` и `monitoring`. При `automated` они синхронизируются сами. Сначала должны встать CRD (`monitoring-crds`), затем стек.
 
 Проверка:
 
 ```bash
 kubectl -n argocd get applications
-kubectl -n podinfo get pods
-kubectl -n monitoring get pods
+kubectl -n podinfo get pods,svc
+kubectl -n monitoring get pods,svc
 ```
 
-`podinfo` слушает NodePort `30080` → http://localhost:8080 (если порт не занят Argo CD).
+## Куда заходить
+
+| Что | Как открыть |
+| --- | --- |
+| `podinfo` | http://localhost:8080 |
+| Argo CD и `root-app` | `kubectl -n argocd port-forward svc/argocd-server 8443:443`, затем https://localhost:8443 |
+| Grafana | `kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80`, затем http://localhost:3000 |
+
+`root-app` — это Application в Argo CD, отдельного HTTP-сервиса у него нет. Его статус виден в UI или так:
+
+```bash
+kubectl -n argocd get application root-app
+kubectl -n argocd describe application root-app
+```
+
+Пароль Grafana берётся из секрета чарта (логин по умолчанию `admin`):
+
+```bash
+kubectl -n monitoring get secret monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+
+NodePort Grafana — `30081`, но в `kind-config.yaml` он на хост не проброшен, поэтому с Windows на него напрямую не зайти.
 
 ## Что не коммитить
 

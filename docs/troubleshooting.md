@@ -10,11 +10,21 @@
 - Имя кластера свободно: `kind get clusters`.
 - Повтор: `kind delete cluster --name arvelov-gitops-demo`, затем снова `kind create ...`.
 
-**`localhost:8080` не отвечает**
+**`localhost:8080` не открывает podinfo**
 
 - Проброс задан в `kind-config.yaml`: хост `8080` → контейнер `30080`.
-- Сервис с `nodePort: 30080` существует: `kubectl get svc -A`.
-- Порт 8080 на Windows не занят другим процессом (часто это port-forward Argo CD или OSPanel).
+- Сервис `podinfo` с `nodePort: 30080`: `kubectl -n podinfo get svc`.
+- Порт 8080 на Windows не занят другим процессом (OSPanel, старый port-forward Argo CD).
+
+**Grafana по `localhost` не открывается**
+
+NodePort Grafana — `30081`. В kind проброшен только `30080`. Открывайте через port-forward:
+
+```bash
+kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
+```
+
+http://localhost:3000
 
 ## Argo CD
 
@@ -28,15 +38,26 @@ kubectl -n argocd logs <name>
 
 На слабой машине подождите 1–2 минуты, затем `kubectl -n argocd rollout status deploy/argocd-server`.
 
+**UI Argo CD не на `localhost:8080`**
+
+`8080` занят podinfo. UI:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8443:443
+```
+
+https://localhost:8443
+
 **Application `Unknown` / `ComparisonError`**
 
-- `repoURL` в манифестах указывает на ваш репозиторий, ветка запушена.
+- `repoURL` в `argocd/root-app.yaml` указывает на ваш репозиторий, ветка запушена.
 - Репозиторий добавлен в Argo CD (для private — SSH-ключ или token).
-- Helm-чарты `podinfo` и `grafana` доступны с машины, где крутится repo-server.
+- Helm-чарты доступны с машины, где крутится repo-server: `ghcr.io/stefanprodan/charts` (podinfo) и `https://prometheus-community.github.io/helm-charts`.
 
 ```bash
 kubectl -n argocd get applications
 kubectl -n argocd describe application root-app
+kubectl -n argocd describe application monitoring
 ```
 
 **`Sync failed` / namespace не создаётся**
@@ -50,7 +71,13 @@ kubectl create namespace monitoring
 
 **Корневое приложение не подхватывает `apps/`**
 
-`path: apps` и `directory.recurse: true` в `argocd/root-app.yaml`. Файлы должны быть `Application` (`apiVersion: argoproj.io/v1alpha1`).
+`path: apps` и `directory.recurse: true` в `argocd/root-app.yaml`. Файлы должны быть `Application` (`apiVersion: argoproj.io/v1alpha1`). Сейчас это `apps/podinfo/application.yaml`, `apps/monitoring/crds-application.yaml` и `apps/monitoring/application.yaml`.
+
+**`monitoring` падает, пока нет CRD**
+
+Стек ставится с `skipCrds: true`. CRD ставит отдельное приложение `monitoring-crds` (чарт `prometheus-operator-crds`, ServerSideApply). Сначала дождитесь `Synced` / `Healthy` у `monitoring-crds`, затем смотрите `monitoring`.
+
+На больших CRD client-side apply упирается в лимит 256KiB. В обоих Application мониторинга стоит `ServerSideApply=true`.
 
 ## SOPS
 
@@ -67,7 +94,7 @@ sops -d secrets/demo-secret.enc.yaml
 
 Файл `age-key.txt` — приватный ключ, не коммитится.
 
-**Grafanaбор в Git — plaintext**
+**В Git попал plaintext**
 
 Коммитьте только `secrets/demo-secret.enc.yaml`. Исходник `demo-secret.yaml` нужен лишь чтобы перегенерировать шифротекст:
 
@@ -77,12 +104,15 @@ sops -e secrets/demo-secret.yaml > secrets/demo-secret.enc.yaml
 
 `demo-secret.enc.yaml` зашифрован ключом из локального `age-key.txt`. Без этого файла (и `SOPS_AGE_KEY_FILE`) `sops -d` не сработает.
 
-**Grafana не стартует: нет `demo-secret`**
+**Секрет не появляется в кластере сам**
 
-Helm Grafana ждёт Secret `demo-secret` в namespace `monitoring` с ключами `admin-user` и `admin-password`. Argo CD сам SOPS не расшифровывает. Варианты:
+Argo CD не расшифровывает SOPS. Локально:
 
-1. Локально: `sops -d secrets/demo-secret.enc.yaml | kubectl apply -f -`
-2. Постоянно: KSOPS / CMP-плагин SOPS в Argo CD
+```bash
+sops -d secrets/demo-secret.enc.yaml | kubectl apply -f -
+```
+
+Постоянно — KSOPS или CMP-плагин SOPS. Чарт kube-prometheus-stack этот Secret не использует: пароль Grafana лежит в `monitoring-grafana`.
 
 ## Приложения
 
@@ -93,16 +123,23 @@ kubectl -n podinfo get pods,svc
 kubectl -n podinfo describe pod <name>
 ```
 
-Проверьте, что Docker может тянуть `ghcr.io/stefanprodan/podinfo`.
+Проверьте, что Docker может тянуть `ghcr.io/stefanprodan/podinfo`. Сервис должен быть NodePort `30080`, страница — http://localhost:8080.
 
-**Grafana Pending**
+**Prometheus или Grafana Pending**
 
 ```bash
-kubectl -n monitoring get pods,svc,secret
+kubectl -n monitoring get pods,svc
 kubectl -n monitoring describe pod -l app.kubernetes.io/name=grafana
+kubectl -n monitoring describe pod -l app.kubernetes.io/name=prometheus
 ```
 
-Частая причина — отсутствует `demo-secret` (см. выше). Persistence в values выключен, PVC не нужен.
+Частые причины: CRD ещё не встали (`monitoring-crds`), не хватает памяти (в values у Prometheus request `256Mi`, у Grafana `128Mi`). Persistence в values не включена, PVC не нужен. Alertmanager выключен.
+
+Логин Grafana: `admin`. Пароль:
+
+```bash
+kubectl -n monitoring get secret monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
 
 ## Полезные команды
 
