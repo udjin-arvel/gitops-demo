@@ -18,6 +18,8 @@ spec:
     helm:
       skipCrds: true
       valuesObject:
+        crds:
+          enabled: false
         alertmanager:
           enabled: false
         prometheus:
