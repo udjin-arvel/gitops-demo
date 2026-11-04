@@ -19,6 +19,8 @@ spec:
         replicaCount: 1
         ui:
           message: arvelov-gitops-demo
+          color: "#2f4f4f"
+          logo: "https://raw.githubusercontent.com/udjin-arvel/arvelov-landing/refs/heads/master/public/favicon.svg?token=GHSAT0AAAAAAEJV53AXLHK6EBHQZBEUBTQ22XLE6YA" 
         service:
           type: NodePort
           nodePort: 30080
