@@ -1,6 +1,6 @@
 # arvelov-gitops-demo
 
-Локальный GitOps-стенд: **Kind** + **Argo CD** (App of Apps) + **SOPS**.
+Локальный GitOps-стенд: **Kind** + **Argo CD** (App of Apps) + **kube-prometheus-stack** + **SOPS**.
 
 Корневое Application `root-app` подхватывает каталог `apps/` и создаёт дочерние приложения:
 
@@ -9,6 +9,51 @@
 - `monitoring` — kube-prometheus-stack (Prometheus + Grafana)
 
 Секреты в Git хранятся только в зашифрованном виде (`secrets/demo-secret.enc.yaml`).
+
+## Стенд в работе
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="screens/screenshot1.png"><img src="screens/screenshot1.png" alt="Argo CD установлен в Kind" /></a>
+      <br />
+      <b>Kind + Argo CD</b><br />
+      UI после установки, кластер готов принимать Application
+    </td>
+    <td align="center" width="33%">
+      <a href="screens/screenshot2.png"><img src="screens/screenshot2.png" alt="App of Apps: все приложения Synced и Healthy" /></a>
+      <br />
+      <b>App of Apps</b><br />
+      <code>root-app</code>, <code>podinfo</code>, CRD и стек мониторинга — Synced / Healthy
+    </td>
+    <td align="center" width="33%">
+      <a href="screens/screenshot3.png"><img src="screens/screenshot3.png" alt="Кастомный UI podinfo" /></a>
+      <br />
+      <b>Helm values → runtime</b><br />
+      Сообщение, цвет и логотип podinfo заданы в Git и доехали до пода
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="screens/screenshot4.png"><img src="screens/screenshot4.png" alt="Grafana: дашборд ресурсов podinfo" /></a>
+      <br />
+      <b>Observability</b><br />
+      Grafana: CPU, память, сеть пода <code>podinfo</code> из kube-prometheus-stack
+    </td>
+    <td align="center" width="33%">
+      <a href="screens/screenshot5.png"><img src="screens/screenshot5.png" alt="Grafana Explore: ImagePullBackOff" /></a>
+      <br />
+      <b>Диагностика</b><br />
+      Explore: <code>ImagePullBackOff</code> после несуществующего тега образа
+    </td>
+    <td align="center" width="33%">
+      <a href="screens/screenshot6.png"><img src="screens/screenshot6.png" alt="Grafana Explore: pod вернулся в Running" /></a>
+      <br />
+      <b>Восстановление</b><br />
+      После фикса манифеста под в <code>Running</code>, история Failed / Pending остаётся в Prometheus
+    </td>
+  </tr>
+</table>
 
 ## Структура
 
@@ -27,6 +72,7 @@
 ├── secrets/
 │   ├── demo-secret.yaml          # plaintext, only for local generation
 │   └── demo-secret.enc.yaml      # encrypted, committed to Git
+├── screens/
 ├── .sops.yaml
 └── docs/
     └── troubleshooting.md

@@ -17,8 +17,8 @@ spec:
       releaseName: podinfo 
       valuesObject:
         replicaCount: 1
-        image:
-          tag: "not-exist-some-666" # Несуществующий тег, чтобы запустить приложение с ошибкой
+        # image:
+        #   tag: "not-exist-some-666" # Несуществующий тег, чтобы запустить приложение с ошибкой
         ui:
           message: arvelov-gitops-demo
           color: "#313131"
