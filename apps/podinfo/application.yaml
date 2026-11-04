@@ -21,13 +21,10 @@ spec:
           message: arvelov-gitops-demo
           color: "#313131"
           logo: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 150 150'><circle cx='75' cy='75' r='73' fill='%23111' stroke='%23eee' stroke-width='2'/><path d='M43 108 75 40 107 108M57 80h36' fill='none' stroke='%23eee' stroke-width='5'/><path d='m94 49-39 65' stroke='%23111' stroke-width='6'/></svg>" 
-        # Включаем искусственные сбои
-        faultInjection:
-          enabled: true
-        # Заставляем приложение всегда отвечать ошибкой 500
-        env:
-          - name: PODINFO_FAULT_ERROR
-            value: "true"
+        # Чарт podinfo: случайная ошибка примерно на каждый третий запрос.
+        # Переключателей в UI нет. Постоянный HTTP 500 — только POST /fault_injection/enable.
+        faults:
+          error: true
         service:
           type: NodePort
           nodePort: 30080
