@@ -10,7 +10,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/arvelov/arvelov-gitops-demo.git
+    repoURL: https://github.com/udjin-arvel/gitops-demo.git
     targetRevision: HEAD
     path: apps
     directory:

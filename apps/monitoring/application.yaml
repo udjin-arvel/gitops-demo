@@ -10,24 +10,26 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://grafana.github.io/helm-charts
-    chart: grafana
-    targetRevision: 8.10.1
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 56.6.2
     helm:
       valuesObject:
-        replicas: 1
-        persistence:
+        alertmanager:
           enabled: false
-        service:
-          type: ClusterIP
-        admin:
-          existingSecret: demo-secret
-          userKey: admin-user
-          passwordKey: admin-password
-        datasources:
-          datasources.yaml:
-            apiVersion: 1
-            datasources: []
+        prometheus:
+          prometheusSpec:
+            retention: 1d
+            resources:
+              requests:
+                memory: 256Mi
+        grafana:
+          service:
+            type: NodePort
+            nodePort: 30081
+          resources:
+            requests:
+              memory: 128Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

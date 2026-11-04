@@ -10,10 +10,11 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://stefanprodan.github.io/podinfo
+    repoURL: ghcr.io/stefanprodan/charts
     chart: podinfo
-    targetRevision: 6.7.1
+    targetRevision: 6.17.0
     helm:
+      releaseName: podinfo 
       valuesObject:
         replicaCount: 1
         ui:
