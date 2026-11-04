@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: arvelov-gitops-demo
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    targetRevision: 8.10.1
+    helm:
+      valuesObject:
+        replicas: 1
+        persistence:
+          enabled: false
+        service:
+          type: ClusterIP
+        admin:
+          existingSecret: demo-secret
+          userKey: admin-user
+          passwordKey: admin-password
+        datasources:
+          datasources.yaml:
+            apiVersion: 1
+            datasources: []
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,4 @@
+.age
+*.agekey
+secrets/demo-secret.yaml
+.sops.yaml.bak
